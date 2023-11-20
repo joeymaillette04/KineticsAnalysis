@@ -6,6 +6,8 @@
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import csv
+import math
 
 # First recorded values of z-axis acceleration for cardboard and foam respectively
 CARDBOARD_OFFSET = 0.486
@@ -32,6 +34,22 @@ class TimeInterval:
             OFFSET = CARDBOARD_OFFSET
 
         self.acceleration = (self.raw_acceleration - OFFSET)*9.80665  
+
+def calculate_avg_acceleration(time_intervals, t1, t2):
+    count = 0
+    summed_acceleration = 0.0
+    for interval in time_intervals:
+        if t1 <= interval.elapsed_time <= t2:
+            count += 1
+            summed_acceleration += interval.acceleration
+
+    avg_acceleration = summed_acceleration / count if count != 0 else 0
+
+    material = "Foam" if time_intervals[0].isFoam else "Cardboard"
+    print(f"Average acceleration for {material} during the intial slide: {avg_acceleration:.3f} m/s^2")
+
+    return avg_acceleration
+
 
 # Calculate the velocity with drift (4. Continuous vs. Discrete Velocity)
 def calculate_velocity_with_drift(time_intervals):
@@ -75,47 +93,74 @@ def calculate_velocity_no_drift(time_intervals):
                 DRIFT_FACTOR = DRIFT_FACTOR_1 + (DRIFT_FACTOR_2 - DRIFT_FACTOR_1)*(interval.elapsed_time - 5.339)/(7.0 - 5.339)
                 OFFSET_FIX = (0.2)*(interval.elapsed_time - 5.339)/(7.0 - 5.339)
                 interval.velocity_no_drift = interval.velocity_with_drift - DRIFT_FACTOR*interval.elapsed_time -OFFSET_FIX
-          
+
+# Calculate the peak velocities pre and post-impact
+def calculate_peak_velocity(time_intervals, start_time, end_time):
+    max_velocity = float('-inf') 
+    min_velocity = float('inf')   
+
+    for interval in time_intervals:
+        if start_time <= interval.elapsed_time <= end_time:
+            max_velocity = max(max_velocity, interval.velocity_no_drift)
+            min_velocity = min(min_velocity, interval.velocity_no_drift)
+
+    material = "Foam" if time_intervals[0].isFoam else "Cardboard"
+    if max_velocity != float('-inf') and min_velocity != float('inf'):
+        print(f"Maximum velocity for {material} post-impact: {max_velocity:.3f} m/s")
+        print(f"Maximum velocity for {material} pre-impact: {min_velocity:.3f} m/s")
+    else:
+        print(f"No data for {material} in the specified time range")
+
+    return max_velocity, min_velocity
+
+# Calculate the experimental work, friction force, and coefficient of friction
+def calculate_exp_friction(time_intervals):
+    vel_final = 2.105 if time_intervals[0].isFoam else 2.157  # from peak velocity calculations
+    work = (0.5 * 1.88 * vel_final ** 2) - (1.88 * 9.80665 * 0.295)
+    friction_force = abs(work / 0.59)
+    friction_coeff = abs(friction_force / (1.88 * 9.80665 * math.cos(math.pi / 6)))
+
+    material = "Foam" if time_intervals[0].isFoam else "Cardboard"
+    print(f"Experimental Friction Calculations for {material}:")
+    print(f"  Work Done: {work:.3f} Joules")
+    print(f"  Friction Force: {friction_force:.3f} Newtons")
+    print(f"  Friction Coefficient: {friction_coeff:.3f}\n")
+
+    return work, friction_force, friction_coeff
+
+
 # Plotting the acceleration vs. time graph from list of time intervals
 def plot_acceleration(time_intervals, fixedAccel: bool):
-    times = [interval.elapsed_time for interval in time_intervals]
-    accelerations = [interval.raw_acceleration for interval in time_intervals]
-    
-    if (fixedAccel):
-        accelerations = [interval.acceleration for interval in time_intervals]
+    if not time_intervals:  # Check if the list is empty
+        print("No data available for plotting acceleration.")
+        return
 
-    title = ""
-    if time_intervals[0].isFoam:
-        title = "Acceleration vs. Time (Foam)"
-    else:
-        title = "Acceleration vs. Time (Cardboard)"
-    
-    if(fixedAccel):
-        title += " (Acceleration with offset)"
+    times = [interval.elapsed_time for interval in time_intervals]
+    accelerations = [interval.raw_acceleration if not fixedAccel else interval.acceleration for interval in time_intervals]
+
+    material = "Foam" if time_intervals[0].isFoam else "Cardboard"
+    title = f"{'Raw Acceleration' if not fixedAccel else 'Acceleration with Offset'} vs. Time ({material})"
 
     plt.figure(figsize=(10, 6))
     plt.plot(times, accelerations, marker='o', markersize=2)
     plt.title(title)
     plt.xlabel('Elapsed Time (s)')
-    plt.ylabel('Acceleration (m/s^2)')
+    plt.ylabel('Acceleration (m/s^2)' if not fixedAccel else 'Corrected Acceleration (m/s^2)')
     plt.grid(True)
     plt.show()
 
+
 # Plotting the velocity vs. time graph from list of time intervals
 def plot_velocity(time_intervals, fixedVel: bool):
-    times = [interval.elapsed_time for interval in time_intervals]
-    velocities = [interval.velocity_with_drift for interval in time_intervals]
-    if (fixedVel):
-        velocities = [interval.velocity_no_drift for interval in time_intervals]
+    if not time_intervals:  # Check if the list is empty
+        print("No data available for plotting velocity.")
+        return
 
-    title = ""
-    if time_intervals[0].isFoam:
-        title = "Velocity vs. Time (Foam)"
-    else:
-        title = "Velocity vs. Time (Cardboard)"
-    
-    if(fixedVel):
-        title += " (Velocity without drift)"
+    times = [interval.elapsed_time for interval in time_intervals]
+    velocities = [interval.velocity_with_drift if not fixedVel else interval.velocity_no_drift for interval in time_intervals]
+
+    material = "Foam" if time_intervals[0].isFoam else "Cardboard"
+    title = f"Velocity {'with Drift' if not fixedVel else 'without Drift'} vs. Time ({material})"
 
     plt.figure(figsize=(10, 6))
     plt.plot(times, velocities, marker='o', markersize=2)
@@ -144,6 +189,16 @@ def read_csv_data(filename):
         print(f"File {filename} not found.")
         return None
     
+# Helper function to write the results to a CSV file
+def write_results_to_csv(time_intervals, filename):
+    with open(filename, 'w', newline='') as file:
+        writer = csv.writer(file)
+        # Writing the header
+        writer.writerow(['Elapsed Time (s)', 'Velocity No Drift (m/s)'])
+        # Writing the data rows
+        for interval in time_intervals:
+            writer.writerow([interval.elapsed_time, interval.velocity_no_drift])
+
 # Reading the CSV files
 cardboard_data = read_csv_data("Cardboard Data.csv")
 foam_data = read_csv_data("Foam Data.csv")
@@ -152,6 +207,8 @@ foam_data = read_csv_data("Foam Data.csv")
 cardboard_intervals = create_time_intervals(cardboard_data, False) if cardboard_data is not None else []
 foam_intervals = create_time_intervals(foam_data, True) if foam_data is not None else []
 
+
+####################################### PLOTS #########################################
 # Plots of no-offset accel vs. time
 plot_acceleration(cardboard_intervals, False)
 plot_acceleration(foam_intervals, False)
@@ -176,5 +233,18 @@ plot_velocity(foam_intervals, False)
 plot_velocity(cardboard_intervals, True)
 plot_velocity(foam_intervals, True)
 
+####################################### VALUES #########################################
+print("RESULTS:\n")
+calculate_avg_acceleration(cardboard_intervals, 5.302, 5.934)
+calculate_avg_acceleration(foam_intervals, 5.339, 5.878)
+print()
+calculate_peak_velocity(cardboard_intervals, 5.302, 6.1)
+calculate_peak_velocity(foam_intervals, 5.339, 6.1)
+print()
+calculate_exp_friction(cardboard_intervals)
+calculate_exp_friction(foam_intervals)
+print()
 
-
+####################################### WRITE TO CSV #########################################
+write_results_to_csv(cardboard_intervals, "Cardboard_Results.csv")
+write_results_to_csv(foam_intervals, "Foam_Results.csv")
