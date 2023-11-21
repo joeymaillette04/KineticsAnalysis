@@ -235,7 +235,7 @@ plot_velocity(foam_intervals, True)
 
 ####################################### VALUES #########################################
 print("RESULTS:\n")
-calculate_avg_acceleration(cardboard_intervals, 5.302, 5.934)
+calculate_avg_acceleration(cardboard_intervals, 5.4, 5.934)
 calculate_avg_acceleration(foam_intervals, 5.339, 5.878)
 print()
 calculate_peak_velocity(cardboard_intervals, 5.302, 6.1)
